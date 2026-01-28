@@ -1,0 +1,18 @@
+# Brain profile (contains LinkedIn session)
+.brain_profile/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+venv/
+.env
+
+# Output
+*.xlsx
+
+# Debug artifacts
+debug_*.html
+debug_*.png

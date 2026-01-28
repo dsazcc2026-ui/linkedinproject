@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brain - LinkedIn Search</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 30px;
+            border-radius: 10px;
+        }
+
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .card h2 {
+            margin-bottom: 20px;
+            color: #444;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card h2 .step {
+            background: #667eea;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9em;
+        }
+
+        .status-bar {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+
+        .status-item.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-item.warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-item.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #5a6fd6;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background: #6c757d;
+        }
+
+        button.success {
+            background: #28a745;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 1em;
+            margin-bottom: 15px;
+        }
+
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .criteria-box {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+
+        .criteria-box p {
+            margin: 8px 0;
+        }
+
+        .criteria-box strong {
+            color: #667eea;
+        }
+
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+
+        .results-table th, .results-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .results-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+
+        .results-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .results-table a {
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        .results-table a:hover {
+            text-decoration: underline;
+        }
+
+        .match {
+            color: #28a745;
+            font-weight: 600;
+        }
+
+        .no-match {
+            color: #dc3545;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .inline-input {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .inline-input input {
+            margin-bottom: 0;
+            width: auto;
+            flex: 1;
+        }
+
+        .metrics {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .metric {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            flex: 1;
+        }
+
+        .metric .number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .metric.success .number {
+            color: #28a745;
+        }
+
+        .analysis-card {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+
+        .analysis-card.match {
+            border-left: 4px solid #28a745;
+        }
+
+        .analysis-card.no-match {
+            border-left: 4px solid #dc3545;
+        }
+
+        .analysis-header {
+            padding: 15px;
+            background: #f8f9fa;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .analysis-header:hover {
+            background: #e9ecef;
+        }
+
+        .analysis-body {
+            padding: 15px;
+            display: none;
+        }
+
+        .analysis-body.open {
+            display: block;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+
+        .tag.match {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .tag.no-match {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        #error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            display: none;
+        }
+
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Brain</h1>
+            <p>LinkedIn Profile Search Tool for Dorsey Asset Management</p>
+        </header>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div class="status-item" id="status-api">
+                <span id="api-icon">?</span> API Key
+            </div>
+            <div class="status-item" id="status-browser">
+                <span id="browser-icon">?</span> Browser
+            </div>
+            <div class="status-item" id="status-linkedin">
+                <span id="linkedin-icon">?</span> LinkedIn
+            </div>
+        </div>
+
+        <div id="error-message"></div>
+
+        <!-- Step 1: Setup -->
+        <div class="card" id="setup-card">
+            <h2><span class="step">1</span> Setup</h2>
+
+            <div id="api-key-section">
+                <label><strong>API Key:</strong></label>
+                <div class="inline-input">
+                    <input type="password" id="api-key-input" placeholder="Enter your Anthropic API key">
+                    <button onclick="setApiKey()">Set Key</button>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <button onclick="launchBrowser()" id="launch-btn">Launch Browser</button>
+                <button onclick="checkLogin()" id="check-login-btn" class="secondary" style="margin-left: 10px;">Check Login</button>
+            </div>
+
+            <div class="loading" id="browser-loading">
+                <div class="spinner"></div>
+                <p>Launching browser...</p>
+            </div>
+        </div>
+
+        <!-- Step 2: Search Query -->
+        <div class="card" id="query-card">
+            <h2><span class="step">2</span> Search Query</h2>
+            <p style="margin-bottom: 15px;">Describe who you're looking for in natural language:</p>
+            <textarea id="query-input" placeholder="e.g., Uber Eats engineers who left between 2023-2025"></textarea>
+            <button onclick="parseQuery()" id="parse-btn">Parse Query</button>
+
+            <div class="loading" id="parse-loading">
+                <div class="spinner"></div>
+                <p>Parsing your query...</p>
+            </div>
+
+            <div id="criteria-display" class="hidden">
+                <h3 style="margin-top: 20px;">Understood Criteria:</h3>
+                <div class="criteria-box" id="criteria-content"></div>
+            </div>
+        </div>
+
+        <!-- Step 3: Search -->
+        <div class="card hidden" id="search-card">
+            <h2><span class="step">3</span> Search LinkedIn</h2>
+            <div class="inline-input" style="margin-bottom: 15px;">
+                <label>Pages to scrape:</label>
+                <input type="number" id="max-pages" value="1" min="1" max="10" style="width: 80px;">
+                <button onclick="runSearch()" id="search-btn">Search</button>
+            </div>
+
+            <div class="loading" id="search-loading">
+                <div class="spinner"></div>
+                <p>Searching LinkedIn...</p>
+            </div>
+
+            <div id="results-display" class="hidden">
+                <h3>Found <span id="results-count">0</span> profiles:</h3>
+                <table class="results-table" id="results-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Name</th>
+                            <th>URL</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Step 4: Analyze -->
+        <div class="card hidden" id="analyze-card">
+            <h2><span class="step">4</span> Analyze Profiles</h2>
+            <div class="inline-input" style="margin-bottom: 15px;">
+                <label>Profiles to analyze:</label>
+                <input type="number" id="num-profiles" value="10" min="1" style="width: 80px;">
+                <button onclick="runAnalysis()" id="analyze-btn">Analyze</button>
+            </div>
+
+            <div class="loading" id="analyze-loading">
+                <div class="spinner"></div>
+                <p id="analyze-status">Analyzing profiles...</p>
+            </div>
+
+            <div id="analysis-display" class="hidden">
+                <div class="metrics">
+                    <div class="metric">
+                        <div class="number" id="total-analyzed">0</div>
+                        <div>Analyzed</div>
+                    </div>
+                    <div class="metric success">
+                        <div class="number" id="total-matches">0</div>
+                        <div>Matches</div>
+                    </div>
+                    <div class="metric">
+                        <div class="number" id="total-non-matches">0</div>
+                        <div>Non-Matches</div>
+                    </div>
+                </div>
+
+                <div id="analysis-results"></div>
+
+                <div style="margin-top: 20px;">
+                    <button onclick="exportResults()" class="success" id="export-btn">Download Excel</button>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            Brain - LinkedIn Profile Search Tool
+        </footer>
+    </div>
+
+    <script>
+        // Update status on page load
+        updateStatus();
+
+        function showError(message) {
+            const el = document.getElementById('error-message');
+            el.textContent = message;
+            el.style.display = 'block';
+            setTimeout(() => el.style.display = 'none', 5000);
+        }
+
+        function updateStatus() {
+            fetch('/status')
+                .then(r => r.json())
+                .then(data => {
+                    // API status
+                    const apiStatus = document.getElementById('status-api');
+                    const apiIcon = document.getElementById('api-icon');
+                    if (data.api_key_set) {
+                        apiStatus.className = 'status-item success';
+                        apiIcon.textContent = '✓';
+                    } else {
+                        apiStatus.className = 'status-item error';
+                        apiIcon.textContent = '✗';
+                    }
+
+                    // Browser status
+                    const browserStatus = document.getElementById('status-browser');
+                    const browserIcon = document.getElementById('browser-icon');
+                    if (data.logged_in) {
+                        browserStatus.className = 'status-item success';
+                        browserIcon.textContent = '✓';
+                    } else {
+                        browserStatus.className = 'status-item warning';
+                        browserIcon.textContent = '○';
+                    }
+
+                    // LinkedIn status
+                    const linkedinStatus = document.getElementById('status-linkedin');
+                    const linkedinIcon = document.getElementById('linkedin-icon');
+                    if (data.logged_in) {
+                        linkedinStatus.className = 'status-item success';
+                        linkedinIcon.textContent = '✓';
+                    } else {
+                        linkedinStatus.className = 'status-item warning';
+                        linkedinIcon.textContent = '○';
+                    }
+                });
+        }
+
+        function setApiKey() {
+            const key = document.getElementById('api-key-input').value.trim();
+            if (!key) {
+                showError('Please enter an API key');
+                return;
+            }
+
+            fetch('/set_api_key', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({api_key: key})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('api-key-input').value = '';
+                    updateStatus();
+                } else {
+                    showError(data.error || 'Failed to set API key');
+                }
+            });
+        }
+
+        function launchBrowser() {
+            document.getElementById('browser-loading').classList.add('active');
+            document.getElementById('launch-btn').disabled = true;
+
+            fetch('/launch_browser', {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('browser-loading').classList.remove('active');
+                document.getElementById('launch-btn').disabled = false;
+
+                if (data.success) {
+                    updateStatus();
+                    if (data.logged_in) {
+                        showSuccess('Browser launched and logged into LinkedIn!');
+                    } else {
+                        showError('Browser launched. Please log into LinkedIn, then click "Check Login"');
+                    }
+                } else {
+                    showError(data.error || 'Failed to launch browser');
+                }
+            });
+        }
+
+        function checkLogin() {
+            document.getElementById('check-login-btn').disabled = true;
+            document.getElementById('check-login-btn').textContent = 'Checking...';
+
+            fetch('/check_login', {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('check-login-btn').disabled = false;
+                document.getElementById('check-login-btn').textContent = 'Check Login';
+                updateStatus();
+
+                if (data.success && data.logged_in) {
+                    showSuccess('Logged into LinkedIn!');
+                } else {
+                    showError('Not logged into LinkedIn. Please log in and try again.');
+                }
+            })
+            .catch(err => {
+                document.getElementById('check-login-btn').disabled = false;
+                document.getElementById('check-login-btn').textContent = 'Check Login';
+                showError('Error checking login status');
+            });
+        }
+
+        function showSuccess(message) {
+            const el = document.getElementById('error-message');
+            el.textContent = message;
+            el.style.display = 'block';
+            el.style.background = '#d4edda';
+            el.style.color = '#155724';
+            setTimeout(() => {
+                el.style.display = 'none';
+                el.style.background = '#f8d7da';
+                el.style.color = '#721c24';
+            }, 3000);
+        }
+
+        function parseQuery() {
+            const query = document.getElementById('query-input').value.trim();
+            if (!query) {
+                showError('Please enter a search query');
+                return;
+            }
+
+            document.getElementById('parse-loading').classList.add('active');
+            document.getElementById('parse-btn').disabled = true;
+
+            fetch('/parse_query', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({query: query})
+            })
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('parse-loading').classList.remove('active');
+                document.getElementById('parse-btn').disabled = false;
+
+                if (data.success) {
+                    displayCriteria(data.criteria);
+                    document.getElementById('search-card').classList.remove('hidden');
+                    document.getElementById('analyze-card').classList.add('hidden');
+                    document.getElementById('results-display').classList.add('hidden');
+                } else {
+                    showError(data.error || 'Failed to parse query');
+                }
+            });
+        }
+
+        function displayCriteria(criteria) {
+            let html = '';
+            html += `<p><strong>Company:</strong> ${criteria.company}</p>`;
+            if (criteria.team_or_product) {
+                html += `<p><strong>Team/Product:</strong> ${criteria.team_or_product}</p>`;
+            }
+            if (criteria.role_keywords && criteria.role_keywords.length > 0) {
+                html += `<p><strong>Role keywords:</strong> ${criteria.role_keywords.join(', ')}</p>`;
+            }
+            html += `<p><strong>Including:</strong> ${criteria.still_employed_ok ? 'Current employees' : 'Former employees only'}</p>`;
+            if (criteria.left_after) {
+                html += `<p><strong>Left after:</strong> ${criteria.left_after}</p>`;
+            }
+            if (criteria.left_before) {
+                html += `<p><strong>Left before:</strong> ${criteria.left_before}</p>`;
+            }
+            if (criteria.min_months_ago) {
+                html += `<p><strong>Left more than:</strong> ${criteria.min_months_ago} months ago</p>`;
+            }
+            if (criteria.max_months_ago) {
+                html += `<p><strong>Left within:</strong> last ${criteria.max_months_ago} months</p>`;
+            }
+            html += `<p><strong>LinkedIn search:</strong> <code>${criteria.linkedin_search_query}</code></p>`;
+            if (criteria.original_query) {
+                html += `<p style="margin-top: 10px; color: #666; font-style: italic;"><strong>Your query:</strong> "${criteria.original_query}"</p>`;
+            }
+
+            document.getElementById('criteria-content').innerHTML = html;
+            document.getElementById('criteria-display').classList.remove('hidden');
+        }
+
+        function runSearch() {
+            const maxPages = parseInt(document.getElementById('max-pages').value) || 1;
+
+            document.getElementById('search-loading').classList.add('active');
+            document.getElementById('search-btn').disabled = true;
+
+            fetch('/search', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({max_pages: maxPages})
+            })
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('search-loading').classList.remove('active');
+                document.getElementById('search-btn').disabled = false;
+
+                if (data.success) {
+                    displayResults(data.results);
+                    document.getElementById('analyze-card').classList.remove('hidden');
+                    document.getElementById('num-profiles').max = data.results.length;
+                    document.getElementById('num-profiles').value = Math.min(10, data.results.length);
+                } else {
+                    showError(data.error || 'Search failed');
+                }
+            });
+        }
+
+        function displayResults(results) {
+            document.getElementById('results-count').textContent = results.length;
+
+            let html = '';
+            results.forEach((r, i) => {
+                html += `<tr>
+                    <td>${i + 1}</td>
+                    <td>${r.name}</td>
+                    <td><a href="${r.url}" target="_blank">${r.url}</a></td>
+                </tr>`;
+            });
+
+            document.getElementById('results-body').innerHTML = html;
+            document.getElementById('results-display').classList.remove('hidden');
+        }
+
+        function runAnalysis() {
+            const numProfiles = parseInt(document.getElementById('num-profiles').value) || 10;
+
+            document.getElementById('analyze-loading').classList.add('active');
+            document.getElementById('analyze-btn').disabled = true;
+
+            fetch('/analyze', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({num_profiles: numProfiles})
+            })
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('analyze-loading').classList.remove('active');
+                document.getElementById('analyze-btn').disabled = false;
+
+                if (data.success) {
+                    displayAnalysis(data.analyses);
+                } else {
+                    showError(data.error || 'Analysis failed');
+                }
+            });
+        }
+
+        function displayAnalysis(analyses) {
+            const matches = analyses.filter(a => a.matches);
+            const nonMatches = analyses.filter(a => !a.matches);
+
+            document.getElementById('total-analyzed').textContent = analyses.length;
+            document.getElementById('total-matches').textContent = matches.length;
+            document.getElementById('total-non-matches').textContent = nonMatches.length;
+
+            let html = '';
+
+            if (matches.length > 0) {
+                html += '<h3 style="margin: 20px 0 10px;">Matching Profiles</h3>';
+                matches.forEach(a => {
+                    html += createAnalysisCard(a, true);
+                });
+            }
+
+            if (nonMatches.length > 0) {
+                html += '<h3 style="margin: 20px 0 10px;">Non-Matching Profiles</h3>';
+                nonMatches.forEach(a => {
+                    html += createAnalysisCard(a, false);
+                });
+            }
+
+            document.getElementById('analysis-results').innerHTML = html;
+            document.getElementById('analysis-display').classList.remove('hidden');
+
+            // Add click handlers for expandable cards
+            document.querySelectorAll('.analysis-header').forEach(header => {
+                header.addEventListener('click', () => {
+                    const body = header.nextElementSibling;
+                    body.classList.toggle('open');
+                });
+            });
+        }
+
+        function createAnalysisCard(analysis, isMatch) {
+            return `
+                <div class="analysis-card ${isMatch ? 'match' : 'no-match'}">
+                    <div class="analysis-header">
+                        <div>
+                            <strong>${analysis.name}</strong>
+                            <span class="tag ${isMatch ? 'match' : 'no-match'}">${isMatch ? 'MATCH' : 'NO MATCH'}</span>
+                        </div>
+                        <span>${analysis.confidence} confidence</span>
+                    </div>
+                    <div class="analysis-body">
+                        <p><strong>URL:</strong> <a href="${analysis.url}" target="_blank">${analysis.url}</a></p>
+                        ${analysis.target_company ? `<p><strong>Company:</strong> ${analysis.target_company}</p>` : ''}
+                        ${analysis.left_date ? `<p><strong>Left:</strong> ${analysis.left_date}</p>` : ''}
+                        <p><strong>Reasoning:</strong> ${analysis.reasoning}</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function exportResults() {
+            window.location.href = '/export';
+        }
+    </script>
+</body>
+</html>

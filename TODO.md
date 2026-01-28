@@ -16,29 +16,63 @@
 ## Phase 3: Profile Analysis ✅ COMPLETE
 - [x] Navigate to each profile URL
 - [x] Extract profile text (work history, dates)
-- [x] Send profile data to Claude API for Goldilocks evaluation
-- [x] Criteria: Left >5 months ago, worked there in last 2.5 years
+- [x] Send profile data to Claude API for evaluation
 - [x] Rate limiting (2-3 second delay between profile visits)
 
-## Phase 4: Output & Polish ← NEXT
-- [ ] Collect matching profiles with metadata
-- [ ] Export to Excel (.xlsx) using pandas
-- [ ] Add CLI interface for query input
-- [ ] Error handling and rate limiting
+## Phase 3.5: Natural Language Query Parsing ✅ COMPLETE
+- [x] `parse_query()` method uses Claude to extract structured criteria from natural language
+- [x] Supports: company, team/product, role keywords, left_after, left_before, min/max_months_ago
+- [x] Shows user what it understood (including team/product like "Uber Eats")
+- [x] Generates optimized LinkedIn search query
+- [x] Evaluates profiles against user's custom criteria
+- [x] Auto-applies LinkedIn's "Past company" filter based on extracted company name
+
+## Phase 4: Web UI & Export ✅ COMPLETE
+- [x] Flask web interface (`app.py`)
+- [x] Clean HTML/CSS UI (`templates/index.html`)
+- [x] Windows launcher script (`launch.bat`)
+- [x] Export to Excel (.xlsx) with download button
+- [x] Status indicators for API key, browser, LinkedIn login
+- [x] Success/error feedback messages
+
+## Phase 5: Scale Testing & Final Features ← WAITING
+- [ ] Test with LinkedIn Premium (currently limited to ~3 results without Premium)
+- [ ] Test at scale with hundreds of profiles
+- [ ] Performance optimization if needed
+- [ ] Auto-messaging feature (potential future request from Dorsey)
+- [ ] Package for easy distribution to Dorsey
 
 ---
 
 ## Current Status (as of 2026-01-28)
 
-**What works:**
-- Run `python main.py` to start the tool
-- Browser launches with persistent Chrome session (reuses your LinkedIn login)
-- Enter a search query like "uber eats engineers"
-- Specify number of pages to scrape
-- Tool returns list of profile names and URLs
-- Tool visits each profile and extracts work history
-- Claude API evaluates each profile against Goldilocks criteria
-- Displays matching profiles with reasoning
+### What works:
+- Run `python app.py` or double-click `launch.bat` to start
+- Web UI opens at http://localhost:5000
+- Set API key and launch browser from the UI
+- Enter natural language queries like:
+  - "Uber Eats engineers who left between 2023-2025"
+  - "Former Google Maps engineers"
+  - "Meta engineers who left in the last 6 months"
+- Claude parses query → extracts company, team/product, role, time constraints
+- Shows parsed criteria with team/product info (e.g., "Uber Eats")
+- Searches LinkedIn with optimized query + Past Company filter
+- Visits each profile, extracts full work history
+- Claude evaluates each profile against criteria
+- Download results as Excel file
 
-**What's next:**
-- Phase 4: Export matching profiles to Excel, add polish
+### Waiting on:
+1. **LinkedIn Premium** - Currently testing with ~3 results per search (free account limit)
+2. **Scale testing** - Need to verify it works with hundreds of profiles
+3. **Final specs from Dorsey** - May want additional features like auto-messaging
+
+### To resume development:
+1. Get LinkedIn Premium access for full search results
+2. Test with larger result sets (50-100+ profiles)
+3. Wait for Dorsey's feedback on additional feature requests
+4. Then package for distribution
+
+### Known limitations:
+- LinkedIn free accounts only see ~3 search results
+- Rate limiting (2-3 sec delay) means 100 profiles takes ~5 minutes to analyze
+- Must keep terminal window open while app is running

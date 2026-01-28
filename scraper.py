@@ -59,13 +59,14 @@ class LinkedInScraper:
         self.browser = browser
         self.page = browser.page
 
-    def search(self, query: str, max_pages: int = 1) -> list[ProfileResult]:
+    def search(self, query: str, max_pages: int = 1, past_company: str = None) -> list[ProfileResult]:
         """
         Execute a search and return profile results.
 
         Args:
             query: Natural language search query
             max_pages: Maximum number of result pages to scrape
+            past_company: If provided, apply LinkedIn's "Past company" filter
 
         Returns:
             List of ProfileResult objects
@@ -73,12 +74,27 @@ class LinkedInScraper:
         parsed = parse_search_query(query)
         all_results = []
 
+        # Navigate to first page
+        url = build_search_url(parsed["keywords"], 1)
+        self.page.goto(url, timeout=60000)
+        self.page.wait_for_load_state("domcontentloaded")
+        self.page.wait_for_timeout(3000)
+
+        # Apply past company filter if specified
+        if past_company:
+            print(f"  Applying 'Past company' filter: {past_company}")
+            if not self._apply_past_company_filter(past_company):
+                print("  Warning: Could not apply past company filter, continuing with keyword search")
+
         for page_num in range(1, max_pages + 1):
             print(f"  Scraping page {page_num}...")
 
-            url = build_search_url(parsed["keywords"], page_num)
-            self.page.goto(url, timeout=60000)
-            self.page.wait_for_load_state("domcontentloaded")
+            # For page 2+, click Next button to preserve filters
+            if page_num > 1:
+                if not self._goto_next_page():
+                    print(f"  Could not navigate to page {page_num}, stopping.")
+                    break
+                self.page.wait_for_load_state("domcontentloaded")
 
             # Wait for search results to load
             self.page.wait_for_timeout(3000)
@@ -285,6 +301,151 @@ class LinkedInScraper:
                 pass
 
         return max_page > current_page
+
+    def _goto_next_page(self) -> bool:
+        """
+        Click the Next button to go to the next page of results.
+        This preserves any applied filters (unlike URL navigation).
+
+        Returns:
+            True if navigation succeeded, False otherwise
+        """
+        try:
+            # Try multiple selectors for the next button
+            selectors = [
+                'button[aria-label="Next"]',
+                'button.artdeco-pagination__button--next',
+                'button[aria-label*="Next"]',
+                'a[aria-label="Next"]',
+            ]
+
+            for selector in selectors:
+                next_button = self.page.query_selector(selector)
+                if next_button and next_button.is_visible():
+                    disabled = next_button.get_attribute("disabled")
+                    if not disabled:
+                        next_button.click()
+                        self.page.wait_for_timeout(2000)
+                        return True
+
+            return False
+        except Exception as e:
+            print(f"    Error navigating to next page: {e}")
+            return False
+
+    def _apply_past_company_filter(self, company: str) -> bool:
+        """
+        Apply LinkedIn's 'Past company' filter.
+
+        Args:
+            company: Company name to filter by
+
+        Returns:
+            True if filter was applied successfully, False otherwise
+        """
+        try:
+            # Click "All filters" button
+            all_filters_btn = self.page.query_selector('button:has-text("All filters")')
+            if not all_filters_btn:
+                # Try alternative selector
+                all_filters_btn = self.page.query_selector('button[aria-label*="filter"]')
+            if not all_filters_btn:
+                print("    Could not find 'All filters' button")
+                return False
+
+            all_filters_btn.click()
+            self.page.wait_for_timeout(2000)
+
+            # Scroll down in the filter panel to reveal "Past company" section
+            self.page.evaluate('''() => {
+                document.querySelectorAll('div').forEach(el => {
+                    if (el.scrollHeight > el.clientHeight && el.clientHeight > 200) {
+                        el.scrollTop = el.scrollHeight / 2;
+                    }
+                });
+            }''')
+            self.page.wait_for_timeout(1000)
+
+            past_company_input = None
+
+            # Click the SECOND "Add a company" button (first is current, second is past)
+            result = self.page.evaluate('''(company) => {
+                // Find all buttons with "Add a company" text
+                const buttons = Array.from(document.querySelectorAll('button'));
+                const companyButtons = buttons.filter(btn => {
+                    let text = (btn.innerText || '').trim().toLowerCase();
+                    return text === 'add a company';
+                });
+
+                if (companyButtons.length < 2) {
+                    return { success: false, error: 'not_enough_buttons', count: companyButtons.length };
+                }
+
+                // Get the second button (Past company)
+                const pastCompanyBtn = companyButtons[1];
+
+                // Click the button to reveal the input
+                pastCompanyBtn.click();
+
+                return { success: true, clicked: 'second' };
+            }''' , company)
+
+            if result.get('success'):
+                self.page.wait_for_timeout(1500)
+
+                # The input that appears has placeholder "Add a company"
+                past_company_input = self.page.query_selector('input[placeholder="Add a company"]')
+            else:
+                print("    Could not find 'Add a company' buttons in filter panel")
+
+            if not past_company_input:
+                print("    Could not find 'Past company' input field")
+                # Close the filter panel
+                close_btn = self.page.query_selector('button[aria-label="Dismiss"], button[aria-label="Close"]')
+                if close_btn:
+                    close_btn.click()
+                return False
+
+            # Type the company name
+            past_company_input.click()
+            past_company_input.fill(company)
+            self.page.wait_for_timeout(1500)  # Wait for autocomplete
+
+            # Select first autocomplete suggestion
+            # LinkedIn typically shows suggestions in a listbox or dropdown
+            suggestion = self.page.query_selector('[role="listbox"] [role="option"], .basic-typeahead__selectable')
+            if suggestion:
+                suggestion.click()
+                self.page.wait_for_timeout(500)
+            else:
+                # Try pressing Enter to confirm
+                past_company_input.press("Enter")
+                self.page.wait_for_timeout(500)
+
+            # Click "Show results" button to apply filters
+            show_results_btn = self.page.query_selector('button:has-text("Show results")')
+            if not show_results_btn:
+                show_results_btn = self.page.query_selector('button[aria-label*="Apply"], button:has-text("Apply")')
+
+            if show_results_btn:
+                show_results_btn.click()
+                self.page.wait_for_timeout(3000)  # Wait for results to reload
+                print(f"    Applied 'Past company' filter for: {company}")
+                return True
+            else:
+                print("    Could not find 'Show results' button")
+                return False
+
+        except Exception as e:
+            print(f"    Error applying past company filter: {e}")
+            # Try to close any open modal
+            try:
+                close_btn = self.page.query_selector('button[aria-label="Dismiss"], button[aria-label="Close"]')
+                if close_btn:
+                    close_btn.click()
+            except:
+                pass
+            return False
 
     def get_profile_experience(self, profile_url: str, delay: float = 2.5, debug: bool = True) -> list[WorkExperience]:
         """

@@ -16,3 +16,4 @@ venv/
 # Debug artifacts
 debug_*.html
 debug_*.png
+debug_*.json

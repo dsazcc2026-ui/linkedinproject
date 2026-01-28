@@ -3,6 +3,7 @@ LinkedIn search results scraper.
 """
 
 import re
+import time
 import urllib.parse
 from dataclasses import dataclass
 from browser import LinkedInBrowser
@@ -14,6 +15,16 @@ class ProfileResult:
     name: str
     url: str
     headline: str | None = None
+
+
+@dataclass
+class WorkExperience:
+    """A work experience entry from a LinkedIn profile."""
+    company: str
+    title: str
+    start_date: str | None = None  # "Jan 2020" format
+    end_date: str | None = None    # "Present" or "Dec 2023"
+    duration: str | None = None    # "2 yrs 3 mos"
 
 
 def parse_search_query(natural_query: str) -> dict:
@@ -274,3 +285,458 @@ class LinkedInScraper:
                 pass
 
         return max_page > current_page
+
+    def get_profile_experience(self, profile_url: str, delay: float = 2.5, debug: bool = True) -> list[WorkExperience]:
+        """
+        Visit a profile and extract work experience history.
+
+        Args:
+            profile_url: LinkedIn profile URL
+            delay: Seconds to wait before visiting (rate limiting)
+            debug: If True, save debug info to files
+
+        Returns:
+            List of WorkExperience objects
+        """
+        # Rate limiting delay
+        if delay > 0:
+            time.sleep(delay)
+
+        # Navigate directly to the full experience details page
+        # This shows ALL experiences, not just the preview
+        experience_url = profile_url.rstrip('/') + '/details/experience/'
+        self.page.goto(experience_url, timeout=60000)
+        self.page.wait_for_load_state("domcontentloaded")
+        self.page.wait_for_timeout(3000)  # Wait for dynamic content
+
+        experiences = []
+
+        try:
+            # Scroll down to load all experiences
+            self.page.evaluate("window.scrollTo(0, 500)")
+            self.page.wait_for_timeout(800)
+            self.page.evaluate("window.scrollTo(0, 1000)")
+            self.page.wait_for_timeout(800)
+            self.page.evaluate("window.scrollTo(0, 2000)")
+            self.page.wait_for_timeout(800)
+
+            # Save debug screenshot
+            if debug:
+                self.page.screenshot(path="debug_profile.png")
+
+            # Use JavaScript to extract all experience data directly
+            experiences = self._extract_experience_via_js(debug=debug)
+
+        except Exception as e:
+            print(f"    Warning: Error extracting experience: {e}")
+
+        return experiences
+
+    def _extract_experience_via_js(self, debug: bool = False) -> list[WorkExperience]:
+        """Extract experience using JavaScript to parse the page."""
+        experiences = []
+
+        try:
+            # Extract experience data using JavaScript
+            # Simpler approach: get the full text of each top-level experience item
+            exp_data = self.page.evaluate(r'''() => {
+                let results = [];
+
+                // Get all top-level experience items
+                let items = document.querySelectorAll('li.pvs-list__paged-list-item');
+
+                for (let item of items) {
+                    // Get the full inner text of this item
+                    let fullText = item.innerText.trim();
+
+                    // Skip if too short or too long
+                    if (fullText.length < 20 || fullText.length > 3000) continue;
+
+                    // Skip if it looks like a "Show more" button
+                    if (fullText.toLowerCase().includes('show all') ||
+                        fullText.toLowerCase().includes('see more')) continue;
+
+                    // Also get structured spans for better parsing
+                    let spans = item.querySelectorAll(':scope > div span[aria-hidden="true"]');
+                    let topSpans = [];
+                    spans.forEach(s => {
+                        let t = s.innerText.trim();
+                        if (t && t.length > 0 && t.length < 200) {
+                            topSpans.push(t);
+                        }
+                    });
+
+                    // Check if this has nested roles (multiple positions at same company)
+                    let nestedUl = item.querySelector(':scope > div > div > ul');
+                    let hasNested = nestedUl && nestedUl.querySelectorAll(':scope > li').length > 0;
+
+                    results.push({
+                        fullText: fullText,
+                        topSpans: topSpans,
+                        hasNested: hasNested
+                    });
+                }
+
+                return results;
+            }''')
+
+            # Debug: save raw extraction data to file
+            if debug and exp_data:
+                import json
+                with open("debug_raw_experience.json", "w", encoding="utf-8") as f:
+                    json.dump(exp_data, f, indent=2, ensure_ascii=False)
+                print(f"    Debug: Raw data saved to debug_raw_experience.json ({len(exp_data)} entries)")
+
+            # Parse each extracted entry
+            for item in exp_data:
+                full_text = item.get('fullText', '')
+                has_nested = item.get('hasNested', False)
+
+                if has_nested:
+                    # This item has multiple roles at one company - parse each
+                    parsed = self._parse_nested_experience(full_text)
+                    for exp in parsed:
+                        if exp and exp.title != "Unknown":
+                            is_dup = any(e.company == exp.company and e.title == exp.title for e in experiences)
+                            if not is_dup:
+                                experiences.append(exp)
+                else:
+                    # Single role - parse directly
+                    exp = self._parse_single_experience(full_text)
+                    if exp and exp.title != "Unknown":
+                        is_dup = any(e.company == exp.company and e.title == exp.title for e in experiences)
+                        if not is_dup:
+                            experiences.append(exp)
+
+        except Exception as e:
+            print(f"    Debug: JS extraction error: {e}")
+
+        return experiences
+
+    def _parse_single_experience(self, full_text: str) -> WorkExperience | None:
+        """Parse a single job entry from its full text."""
+        if not full_text or len(full_text) < 10:
+            return None
+
+        lines = [l.strip() for l in full_text.split('\n') if l.strip()]
+        if len(lines) < 2:
+            return None
+
+        # Skip UI elements
+        if any(skip in full_text.lower() for skip in ['show all', 'see more', 'see less']):
+            return None
+
+        title = None
+        company = None
+        start_date = None
+        end_date = None
+        duration = None
+
+        # Patterns
+        date_range_pattern = r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4})\s*[-–]\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}|Present)'
+        duration_pattern = r'(\d+\s*(?:yr|yrs|mo|mos)(?:\s*\d+\s*(?:yr|yrs|mo|mos))?)'
+
+        for line in lines:
+            # Check for date range
+            range_match = re.search(date_range_pattern, line, re.IGNORECASE)
+            if range_match and not start_date:
+                start_date = range_match.group(1)
+                end_date = range_match.group(2)
+                # Also try to get duration from same line
+                dur_match = re.search(r'·\s*' + duration_pattern, line)
+                if dur_match:
+                    duration = dur_match.group(1)
+                continue
+
+            # Check for standalone duration
+            if re.match(r'^\d+\s*(yr|yrs|mo|mos)', line):
+                duration = line.split('·')[0].strip()
+                continue
+
+            # Skip location lines
+            if re.match(r'^(Remote|Hybrid|On-?site|United States|San Francisco|New York|London|Seattle|Chicago|Los Angeles|Austin|Bengaluru|India|California)', line, re.IGNORECASE):
+                continue
+
+            # Skip employment type standalone
+            if re.match(r'^(Full-time|Part-time|Contract|Internship|Self-employed|Freelance)$', line, re.IGNORECASE):
+                continue
+
+            # Skip descriptions (usually longer lines or start with bullet points)
+            if len(line) > 100 or line.startswith('•') or line.startswith('-'):
+                continue
+
+            # First valid line is usually title
+            if not title and len(line) > 2 and len(line) < 80:
+                title = line
+            # Second is usually company
+            elif not company and len(line) > 1 and len(line) < 80 and line != title:
+                # Clean company name (remove "· Full-time" etc)
+                company = re.split(r'\s*·\s*', line)[0].strip()
+
+        if title or company:
+            return WorkExperience(
+                company=company or "Unknown",
+                title=title or "Unknown",
+                start_date=start_date,
+                end_date=end_date,
+                duration=duration
+            )
+        return None
+
+    def _parse_nested_experience(self, full_text: str) -> list[WorkExperience]:
+        """Parse multiple roles at the same company from full text."""
+        results = []
+        if not full_text:
+            return results
+
+        lines = [l.strip() for l in full_text.split('\n') if l.strip()]
+        if len(lines) < 3:
+            return results
+
+        # First line is usually the company name
+        # Second line might be total duration like "5 yrs 2 mos"
+        company = None
+        for line in lines[:3]:
+            # Skip duration-only lines
+            if re.match(r'^\d+\s*(yr|yrs|mo|mos)', line):
+                continue
+            # Skip "Full-time" etc
+            if re.match(r'^(Full-time|Part-time|Contract)$', line, re.IGNORECASE):
+                continue
+            if not company and len(line) > 1 and len(line) < 100:
+                company = line
+                break
+
+        if not company:
+            return results
+
+        # Now find each role - they usually have date patterns
+        date_range_pattern = r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4})\s*[-–]\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}|Present)'
+
+        current_title = None
+        current_start = None
+        current_end = None
+        current_duration = None
+
+        for i, line in enumerate(lines):
+            # Check for date range - this usually marks a role
+            range_match = re.search(date_range_pattern, line, re.IGNORECASE)
+            if range_match:
+                # Save previous role if we have one
+                if current_title:
+                    results.append(WorkExperience(
+                        company=company,
+                        title=current_title,
+                        start_date=current_start,
+                        end_date=current_end,
+                        duration=current_duration
+                    ))
+
+                # Start new role - title should be the previous line
+                current_start = range_match.group(1)
+                current_end = range_match.group(2)
+
+                # Get duration from same line if present
+                dur_match = re.search(r'·\s*(\d+\s*(?:yr|yrs|mo|mos)(?:\s*\d+\s*(?:mo|mos))?)', line)
+                current_duration = dur_match.group(1) if dur_match else None
+
+                # Look for title in previous lines
+                for j in range(i - 1, max(0, i - 3), -1):
+                    prev_line = lines[j]
+                    # Skip company name, durations, locations
+                    if prev_line == company:
+                        continue
+                    if re.match(r'^\d+\s*(yr|yrs|mo|mos)', prev_line):
+                        continue
+                    if re.match(r'^(Full-time|Part-time|Remote|Hybrid|On-?site)', prev_line, re.IGNORECASE):
+                        continue
+                    if len(prev_line) > 2 and len(prev_line) < 80:
+                        current_title = prev_line
+                        break
+
+        # Don't forget the last role
+        if current_title:
+            results.append(WorkExperience(
+                company=company,
+                title=current_title,
+                start_date=current_start,
+                end_date=current_end,
+                duration=current_duration
+            ))
+
+        return results
+
+    def _parse_structured_experience(self, texts: list[str], company_override: str = None) -> WorkExperience | None:
+        """Parse experience from a list of text spans (more reliable than raw text)."""
+        if not texts or len(texts) < 2:
+            return None
+
+        company = company_override  # Use override if provided (for nested roles)
+        title = None
+        start_date = None
+        end_date = None
+        duration = None
+
+        # Patterns
+        date_range_pattern = r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4})\s*[-–]\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}|Present)'
+        duration_pattern = r'^\d+\s*(yr|yrs|mo|mos)'
+        single_date_pattern = r'^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}$'
+
+        # Skip patterns
+        skip_patterns = ['see more', 'show all', 'skills', 'endorsement',
+                        'recommendation', 'license', 'certification']
+
+        for text in texts:
+            text = text.strip()
+            if not text or len(text) < 2:
+                continue
+
+            text_lower = text.lower()
+
+            # Skip UI elements
+            if any(p in text_lower for p in skip_patterns):
+                return None
+
+            # Check for date range (e.g., "Jan 2020 - Present")
+            range_match = re.search(date_range_pattern, text, re.IGNORECASE)
+            if range_match:
+                start_date = range_match.group(1)
+                end_date = range_match.group(2)
+                continue
+
+            # Check for duration (e.g., "2 yrs 3 mos")
+            if re.match(duration_pattern, text, re.IGNORECASE):
+                duration = text
+                continue
+
+            # Check for single date
+            if re.match(single_date_pattern, text, re.IGNORECASE):
+                if not start_date:
+                    start_date = text
+                continue
+
+            # Skip location-like entries
+            if re.match(r'^(Remote|Hybrid|On-?site|United States|San Francisco|New York|London|Seattle|Chicago|Los Angeles|Austin|·)', text, re.IGNORECASE):
+                continue
+
+            # Skip employment type
+            if re.match(r'^(Full-time|Part-time|Contract|Internship|Self-employed|Freelance|Seasonal|Apprenticeship)$', text, re.IGNORECASE):
+                continue
+
+            # First real text is usually the title
+            if not title and len(text) > 2 and len(text) < 100:
+                title = text
+            # Second is usually company (if we don't already have one from override)
+            elif not company and len(text) > 1 and len(text) < 100:
+                # Don't set company if it looks like it's the same as title
+                if text != title:
+                    company = text
+
+        # Clean up: if company contains "· Full-time" etc, strip it
+        if company:
+            company = re.split(r'\s*·\s*', company)[0].strip()
+
+        if title or company:
+            return WorkExperience(
+                company=company or "Unknown",
+                title=title or "Unknown",
+                start_date=start_date,
+                end_date=end_date,
+                duration=duration
+            )
+
+        return None
+
+    def _parse_experience_text(self, text: str) -> WorkExperience | None:
+        """Parse experience from a text block."""
+        if not text or len(text) < 10:
+            return None
+
+        # Skip UI elements and non-job entries
+        text_lower = text.lower()
+        skip_patterns = ['see more', 'show all', 'show more', 'see all', 'skills',
+                        'endorsement', 'recommendation', 'license', 'certification',
+                        'education', 'course', 'volunteer', 'publication']
+        if any(pattern in text_lower for pattern in skip_patterns):
+            return None
+
+        # Split by common delimiters
+        lines = []
+        for line in text.replace(' | ', '\n').split('\n'):
+            line = line.strip()
+            if line and len(line) > 1:
+                lines.append(line)
+
+        if not lines:
+            return None
+
+        company = None
+        title = None
+        start_date = None
+        end_date = None
+        duration = None
+
+        # Patterns
+        date_pattern = r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}'
+        duration_pattern = r'\d+\s*(yr|yrs|mo|mos)'
+        date_range_pattern = r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4})\s*[-–]\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}|Present)'
+
+        for line in lines:
+            # Check for date range
+            range_match = re.search(date_range_pattern, line, re.IGNORECASE)
+            if range_match:
+                start_date = range_match.group(1)
+                end_date = range_match.group(2)
+                continue
+
+            # Check for duration
+            if re.search(duration_pattern, line, re.IGNORECASE) and not title:
+                duration = line
+                continue
+
+            # Check if line is just a date
+            if re.match(r'^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}', line, re.IGNORECASE):
+                if not start_date:
+                    start_date = line
+                continue
+
+            # Skip location-like lines
+            if re.match(r'^(Remote|United States|San Francisco|New York|London|·)', line, re.IGNORECASE):
+                continue
+
+            # Skip "Full-time", "Part-time", etc
+            if re.match(r'^(Full-time|Part-time|Contract|Internship|Self-employed)$', line, re.IGNORECASE):
+                continue
+
+            # First substantial line is usually title
+            if not title and len(line) > 2 and len(line) < 100:
+                title = line
+            # Second is usually company (but not if it's the same as title)
+            elif not company and len(line) > 2 and len(line) < 100 and line != title:
+                company = line
+
+        # If company equals title, try to split by comma or clear company
+        if company and title and company == title:
+            # Try to extract company from title like "Title at Company" or "Title, Company"
+            if ' at ' in title:
+                parts = title.split(' at ', 1)
+                title = parts[0].strip()
+                company = parts[1].strip()
+            elif ', ' in title:
+                parts = title.split(', ', 1)
+                title = parts[0].strip()
+                company = parts[1].strip()
+            else:
+                company = None  # Clear duplicate
+
+        # Only return if we have meaningful data
+        if title or company:
+            return WorkExperience(
+                company=company or "Unknown",
+                title=title or "Unknown",
+                start_date=start_date,
+                end_date=end_date,
+                duration=duration
+            )
+
+        return None

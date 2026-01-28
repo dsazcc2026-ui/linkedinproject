@@ -13,13 +13,14 @@
 - [x] Filter out "mutual connection" mentions (both singular and plural)
 - [x] Skip anonymous "LinkedIn Member" profiles
 
-## Phase 3: Profile Analysis ← NEXT
-- [ ] Navigate to each profile URL
-- [ ] Extract profile text (work history, dates)
-- [ ] Send profile data to Claude API for Goldilocks evaluation
-- [ ] Criteria: Left >5 months ago, worked there in last 2.5 years
+## Phase 3: Profile Analysis ✅ COMPLETE
+- [x] Navigate to each profile URL
+- [x] Extract profile text (work history, dates)
+- [x] Send profile data to Claude API for Goldilocks evaluation
+- [x] Criteria: Left >5 months ago, worked there in last 2.5 years
+- [x] Rate limiting (2-3 second delay between profile visits)
 
-## Phase 4: Output & Polish
+## Phase 4: Output & Polish ← NEXT
 - [ ] Collect matching profiles with metadata
 - [ ] Export to Excel (.xlsx) using pandas
 - [ ] Add CLI interface for query input
@@ -35,6 +36,9 @@
 - Enter a search query like "uber eats engineers"
 - Specify number of pages to scrape
 - Tool returns list of profile names and URLs
+- Tool visits each profile and extracts work history
+- Claude API evaluates each profile against Goldilocks criteria
+- Displays matching profiles with reasoning
 
 **What's next:**
-- Phase 3: Visit each profile URL, extract work history, use Claude API to filter by Goldilocks criteria
+- Phase 4: Export matching profiles to Excel, add polish

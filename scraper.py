@@ -147,7 +147,9 @@ class LinkedInScraper:
                     let p = el.parentElement;
                     for (let i = 0; i < 2 && p; i++) {
                         let t = p.innerText || "";
-                        if (t.toLowerCase().includes("mutual") && t.includes(" and ")) {
+                        let tLower = t.toLowerCase();
+                        // Catch both "X and Y are mutual connections" and "X is a mutual connection"
+                        if (tLower.includes("mutual") && (t.includes(" and ") || tLower.includes(" is a mutual"))) {
                             isMutual = true;
                             break;
                         }
